@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Choose Cartoon</title>
+    <style>
+        body {
+            background:#b3d9ff; /* Light blue */
+            font-family: Arial, sans-serif;
+            margin:0;
+            padding:20px;
+            text-align:center;
+        }
+
+        h1 { 
+            color:#003d99;
+            margin-top: 10px;
+        }
+
+        h2 {
+            font-weight: bold;
+            margin-top: 20px;
+        }
+
+        .container {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            margin-top: 30px;
+            flex-wrap: wrap;
+        }
+
+        .card {
+            width: 250px;
+            background:white;
+            padding:15px;
+            border-radius:20px;
+            box-shadow:0 4px 12px rgba(0,0,0,0.2);
+            cursor:pointer;
+            transition:0.3s;
+        }
+
+        .card:hover {
+            transform:scale(1.07);
+        }
+
+        img {
+            width: 100%;
+            height: 230px;      /* same height for all GIFs */
+            object-fit: contain; /* show whole GIF without cutting */
+            border-radius: 12px;
+            background: #ffffff; /* keeps white space around GIF clean */
+        }
+
+        p {
+            margin-top:10px;
+            font-size:18px;
+            font-weight:bold;
+        }
+        /* 🟠 Bheem – Orange → Yellow */
+.card:nth-child(1) {
+    background: linear-gradient(135deg, #f6d365, #fda085);
+}
+
+/* 🟤 Jerry – Brown → Cream */
+.card:nth-child(2) {
+    background: linear-gradient(135deg, #d1913c, #ffd194);
+}
+
+/* 🔵 Doraemon – Blue → Cyan */
+.card:nth-child(3) {
+    background: linear-gradient(135deg, #89f7fe, #66a6ff);
+}
+
+    </style>
+</head>
+
+<body>
+
+<h1 id="welcome"></h1>
+<h2>Select Your Favorite Cartoon 👦</h2>
+
+<div class="container">
+
+    <div class="card">
+        
+        <img src="bheem.gif" alt="Chhota Bheem">
+        <p>Chhota Bheem</p>
+    </div>
+
+    <div class="card">
+        <img src="jerry.gif" alt="Tom & Jerry">
+        <p>Tom & Jerry</p>
+    </div>
+
+    <div class="card">
+        <img src="doraemon.gif" alt="Doraemon">
+        <p>Doraemon</p>
+    </div>
+
+</div>
+
+
+<script>
+// @ts-nocheck
+const params = new URLSearchParams(window.location.search);
+const name = params.get("name");
+
+document.getElementById("welcome").textContent = "Hi " + name + "! 💙";
+</script>
+
+</body>
+</html>
