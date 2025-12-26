@@ -10,7 +10,62 @@ function resize() {
 resize();
 window.addEventListener("resize", resize);
 
-/* ================= AUDIO SYSTEM ================= */
+/* ================= SYNTHETIC AUDIO ENGINE ================= */
+const AudioContext = window.AudioContext || window.webkitAudioContext;
+const audioCtx = new AudioContext();
+
+// Generate White Noise Buffer for Explosions
+const bufferSize = audioCtx.sampleRate * 2; 
+const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+const data = noiseBuffer.getChannelData(0);
+for (let i = 0; i < bufferSize; i++) {
+  data[i] = Math.random() * 2 - 1;
+}
+
+const sfx = {
+  shoot: () => {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+
+    // "Pew" Sound
+    osc.type = "square";
+    osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.15);
+
+    // Lowered Volume
+    gain.gain.setValueAtTime(0.05, audioCtx.currentTime); 
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.15);
+  },
+  
+  explosion: () => {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = noiseBuffer;
+    const noiseFilter = audioCtx.createBiquadFilter();
+    const noiseGain = audioCtx.createGain();
+
+    noise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(audioCtx.destination);
+
+    noiseFilter.type = "lowpass";
+    noiseFilter.frequency.value = 800;
+
+    noiseGain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+    noiseGain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+
+    noise.start();
+    noise.stop(audioCtx.currentTime + 0.5);
+  }
+};
+
 const bgm = {
   normal: new Audio("sounds/bgm.mp3"),
   boss1: new Audio("sounds/boss_bgm.mp3"),
@@ -18,29 +73,17 @@ const bgm = {
   final: new Audio("sounds/final_boss_bgm.mp3")
 };
 
-const sfx = {
-  shoot: new Audio("sounds/shoot.mp3"),
-  explosion: new Audio("sounds/explosion.mp3")
-};
-
 Object.values(bgm).forEach(b => {
   b.loop = true;
   b.volume = 0.5;
 });
-
-function playSfx(key) {
-  if (sfx[key]) {
-    const sound = sfx[key].cloneNode(); 
-    sound.volume = 0.3; 
-    sound.play().catch(() => {});
-  }
-}
 
 function playBgm(key) {
   Object.values(bgm).forEach(b => {
     b.pause();
     b.currentTime = 0;
   });
+  if (audioCtx.state === 'suspended') audioCtx.resume();
   bgm[key]?.play().catch(e => console.log("Audio play failed (interact first):", e));
 }
 
@@ -71,7 +114,6 @@ let game = {
   theme: "normal"     
 };
 
-// Player Speed 6.5
 let player = { 
     x: canvas.width / 2, 
     y: canvas.height - 100, 
@@ -79,7 +121,7 @@ let player = {
     speed: 6.5, 
     dx: 0, 
     weaponLevel: 1,
-    shield: false // NEW: Shield State
+    shield: false 
 };
 
 let bullets = [];
@@ -101,6 +143,75 @@ window.addEventListener("keydown", e => {
 window.addEventListener("keyup", e => keys[e.key] = false);
 menu.onclick = initGame;
 
+/* ================= UI & THEME MANAGER ================= */
+function updateUITheme() {
+    if (game.theme === "normal") {
+        canvas.style.boxShadow = "0 0 50px rgba(0, 255, 255, 0.2)";
+        canvas.style.borderColor = "#333";
+    } else if (game.theme === "boss1") {
+        canvas.style.boxShadow = "0 0 100px rgba(255, 0, 0, 0.8)";
+        canvas.style.borderColor = "#800";
+    } else if (game.theme === "boss2") {
+        canvas.style.boxShadow = "0 0 80px rgba(0, 255, 0, 0.8)";
+        canvas.style.borderColor = "#0f0";
+    } else if (game.theme === "boss3") {
+        canvas.style.boxShadow = "inset 0 0 150px rgba(100, 0, 200, 0.9)";
+        canvas.style.borderColor = "#202";
+    }
+}
+
+function drawBossHealthBar() {
+    if (!boss) return;
+
+    const w = 400;
+    const h = 20;
+    const x = canvas.width / 2 - w / 2;
+    const y = 80;
+
+    let color = "#f00";
+    let name = boss.name || "BOSS";
+    
+    if (game.level === 2) color = "#0f0";
+    if (game.level >= 3) color = "#d0f";
+
+    ctx.save();
+    
+    ctx.fillStyle = color;
+    ctx.font = "bold 24px Orbitron";
+    ctx.textAlign = "center";
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = color;
+
+    if (game.level === 1) {
+        const sx = (Math.random() - 0.5) * 2;
+        ctx.fillText(name, canvas.width / 2 + sx, y - 15);
+    } else if (game.level === 2) {
+        if (Math.random() < 0.1) name = name.replace(/[AEIOU]/g, "#");
+        ctx.fillText(name, canvas.width / 2, y - 15);
+    } else {
+        ctx.globalAlpha = 0.6 + Math.sin(game.frames * 0.1) * 0.4;
+        ctx.fillText(name, canvas.width / 2, y - 15);
+        ctx.globalAlpha = 1.0;
+    }
+
+    ctx.fillStyle = "rgba(0,0,0,0.7)";
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+
+    const pct = Math.max(0, boss.hp / boss.maxHp);
+    ctx.fillStyle = color;
+    
+    if (game.level === 2 && Math.random() < 0.05) {
+        ctx.fillStyle = "#fff"; 
+    }
+    
+    ctx.fillRect(x, y, w * pct, h);
+    
+    ctx.restore();
+}
+
 /* ================= DRAWING HELPERS ================= */
 function drawGlow(color, blur = 20) {
   ctx.shadowBlur = blur;
@@ -112,6 +223,8 @@ function drawGlow(color, blur = 20) {
 function resetGlow() {
   ctx.shadowBlur = 0;
   ctx.shadowColor = "transparent";
+  ctx.globalCompositeOperation = "source-over"; 
+  ctx.filter = "none";
 }
 
 function drawPoly(x, y, radius, sides, color, rotation = 0, stroke = false) {
@@ -136,70 +249,117 @@ function drawPoly(x, y, radius, sides, color, rotation = 0, stroke = false) {
   resetGlow();
 }
 
-/* --- ADVANCED BOSS RENDERER --- */
+/* --- BOSS RENDERER --- */
 function drawBossModel(b) {
   if (game.level === 1) {
-    // === BOSS 1: THE HELL-GRINDER ===
-    drawPoly(b.x, b.y, 90, 8, "#500", 0); 
-    drawPoly(b.x, b.y, 85, 12, "#ff0000", -game.frames * 0.15); 
-    drawPoly(b.x, b.y, 60, 20, "#aa0000", game.frames * 0.05); 
-    const heat = 30 + Math.sin(game.frames * 0.5) * 5;
-    drawPoly(b.x, b.y, heat, 4, "#fff", game.frames * 0.1); 
-    ctx.fillStyle = "rgba(0,0,0,0.5)"; 
-    ctx.fillRect(b.x - 20, b.y - 20, 10, 40);
-    ctx.fillRect(b.x + 10, b.y - 20, 10, 40);
+    const bladeGrad = ctx.createLinearGradient(b.x - 100, b.y - 100, b.x + 100, b.y + 100);
+    bladeGrad.addColorStop(0, "#888");
+    bladeGrad.addColorStop(0.5, "#fff");
+    bladeGrad.addColorStop(1, "#333");
+
+    const coreGrad = ctx.createRadialGradient(b.x, b.y, 10, b.x, b.y, 60);
+    coreGrad.addColorStop(0, "#fff");
+    coreGrad.addColorStop(0.3, "#f00");
+    coreGrad.addColorStop(1, "#400");
+
+    drawPoly(b.x, b.y, 90, 8, "#221111", 0);
+    
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.rotate(-game.frames * 0.15);
+    ctx.fillStyle = bladeGrad;
+    ctx.beginPath();
+    for (let i = 0; i < 12; i++) {
+        const angle = (i * 2 * Math.PI) / 12;
+        ctx.lineTo(Math.cos(angle) * 85, Math.sin(angle) * 85);
+        ctx.lineTo(Math.cos(angle + 0.2) * 40, Math.sin(angle + 0.2) * 40); 
+    }
+    ctx.fill();
+    ctx.restore();
+    
+    ctx.fillStyle = coreGrad;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, 30 + Math.sin(game.frames * 0.5) * 5, 0, Math.PI*2);
+    ctx.fill();
+    
+    if(game.frames % 5 === 0) {
+        particles.push({x: b.x - 30, y: b.y, vx: -2, vy: -2, life: 0.5, color: "#555"});
+        particles.push({x: b.x + 30, y: b.y, vx: 2, vy: -2, life: 0.5, color: "#555"});
+    }
   } 
   else if (game.level === 2) {
-    // === BOSS 2: THE SERAPH VIRUS ===
+    ctx.globalCompositeOperation = "lighter";
     const breath = Math.sin(game.frames * 0.05) * 10;
-    drawPoly(b.x, b.y, 100 + breath, 3, "#0f0", game.frames * 0.02, true); 
-    drawPoly(b.x, b.y, 100 + breath, 3, "#0f0", -game.frames * 0.02 + Math.PI, true); 
-    drawPoly(b.x, b.y, 60, 4, "#00ff00", Math.sin(game.frames * 0.02)); 
+    
+    ctx.strokeStyle = "rgba(0, 255, 100, 0.8)";
+    ctx.lineWidth = 4;
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = "#0f0";
+    
+    ctx.beginPath();
+    ctx.ellipse(b.x, b.y, 100 + breath, 30, game.frames * 0.02, 0, Math.PI*2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(b.x, b.y, 100 + breath, 30, -game.frames * 0.02 + Math.PI/2, 0, Math.PI*2);
+    ctx.stroke();
+
+    const cpuGrad = ctx.createRadialGradient(b.x, b.y, 5, b.x, b.y, 50);
+    cpuGrad.addColorStop(0, "#fff");
+    cpuGrad.addColorStop(0.5, "#0f0");
+    cpuGrad.addColorStop(1, "rgba(0,0,0,0)");
+    
+    ctx.fillStyle = cpuGrad;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, 40, 0, Math.PI*2);
+    ctx.fill();
+
+    ctx.fillStyle = "#fff";
     for(let i=0; i<4; i++) { 
         const angle = (game.frames * 0.05) + (i * (Math.PI/2));
         const dist = 70;
         const bx = b.x + Math.cos(angle) * dist;
         const by = b.y + Math.sin(angle) * dist;
-        drawPoly(bx, by, 15, 6, "#fff", -angle * 2);
+        ctx.fillRect(bx-5, by-5, 10, 10);
     }
-    drawPoly(b.x, b.y, 20, 8, "#fff", 0); 
+    resetGlow(); 
   } 
   else {
-    // === BOSS 3: THE VOID SINGULARITY ===
-    ctx.save();
-    ctx.translate(b.x, b.y);
-    drawGlow("#a0f", 50);
-    ctx.beginPath();
-    for (let i = 0; i <= 360; i+=10) {
-        const rad = (i * Math.PI) / 180;
-        const r = 80 + Math.sin((game.frames * 0.1) + (i * 0.1)) * 10;
-        ctx.lineTo(Math.cos(rad) * r, Math.sin(rad) * r);
-    }
-    ctx.closePath();
-    ctx.strokeStyle = "#80f";
-    ctx.lineWidth = 4;
-    ctx.stroke();
-    ctx.restore();
+    const diskGrad = ctx.createRadialGradient(b.x, b.y, 40, b.x, b.y, 120);
+    diskGrad.addColorStop(0, "rgba(0,0,0,0)");
+    diskGrad.addColorStop(0.4, "#204");
+    diskGrad.addColorStop(0.8, "#80f");
+    diskGrad.addColorStop(1, "rgba(0,0,0,0)");
     
     ctx.save();
     ctx.translate(b.x, b.y);
-    ctx.rotate(game.frames * 0.05);
-    drawPoly(0, 0, 60, 3, "#303", 0); 
-    drawPoly(0, 0, 60, 3, "#303", Math.PI); 
+    ctx.rotate(game.frames * 0.02);
+    ctx.fillStyle = diskGrad;
+    ctx.beginPath();
+    for (let i = 0; i <= 360; i+=5) {
+        const r = 100 + Math.sin(i * 0.1 + game.frames * 0.1) * 10;
+        const rad = i * Math.PI/180;
+        ctx.lineTo(Math.cos(rad) * r, Math.sin(rad) * r);
+    }
+    ctx.fill();
     ctx.restore();
+
+    ctx.fillStyle = "#000";
+    ctx.shadowBlur = 50;
+    ctx.shadowColor = "#f0f"; 
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, 45, 0, Math.PI*2);
+    ctx.fill();
+    resetGlow();
 
     const angle = Math.atan2(player.y - b.y, player.x - b.x);
     ctx.save();
     ctx.translate(b.x, b.y);
     ctx.rotate(angle);
-    ctx.fillStyle = "#000";
-    ctx.beginPath();
-    ctx.arc(0, 0, 30, 0, Math.PI*2);
-    ctx.fill();
-    drawGlow("#f0f", 20);
+    ctx.shadowBlur = 20;
+    ctx.shadowColor = "#fff";
     ctx.fillStyle = "#fff";
     ctx.beginPath();
-    ctx.ellipse(10, 0, 12, 3, 0, 0, Math.PI*2);
+    ctx.ellipse(15, 0, 12, 2, 0, 0, Math.PI*2); 
     ctx.fill();
     ctx.restore();
     resetGlow();
@@ -238,6 +398,7 @@ function drawBackground() {
   else if (game.theme === "boss2") {
     ctx.fillStyle = "#000800"; 
     ctx.fillRect(0, 0, w, h);
+    // Digital Glitch Blocks
     ctx.fillStyle = "rgba(0, 255, 0, 0.1)";
     for(let i=0; i<20; i++) {
         const nx = Math.random() * w;
@@ -281,7 +442,7 @@ function drawBackground() {
 }
 
 function spawnExplosion(x, y, color, count = 10) {
-  playSfx("explosion");
+  sfx.explosion(); 
   for (let i = 0; i < count; i++) {
     particles.push({
       x, y,
@@ -301,7 +462,7 @@ function initGame() {
   game.level = 1;
   game.theme = "normal"; 
   player.weaponLevel = 1;
-  player.shield = false; // Reset shield
+  player.shield = false;
   player.x = canvas.width / 2;
   player.y = canvas.height - 100;
   
@@ -312,8 +473,8 @@ function initGame() {
   boss = null;
   
   menu.style.display = "none";
+  updateUITheme();
   createStars();
-  
   playBgm("normal");
 }
 
@@ -327,7 +488,7 @@ function updatePlayer() {
   if (player.x > canvas.width - 20) player.x = canvas.width - 20;
 
   if (keys[" "] && game.frames % 10 === 0) {
-    playSfx("shoot");
+    sfx.shoot(); 
     if (player.weaponLevel === 1) {
        bullets.push({ x: player.x, y: player.y - 20, w: 4, h: 15, vx: 0, vy: -12, color: COLORS.bullet });
     } else {
@@ -341,7 +502,6 @@ function updatePlayer() {
   ctx.translate(player.x, player.y);
   ctx.rotate(player.dx * 0.02); 
   
-  // Draw Shield if Active
   if (player.shield) {
       drawGlow("#0ff", 10);
       ctx.strokeStyle = "#0ff";
@@ -375,7 +535,6 @@ function updatePlayer() {
 }
 
 function updateEntities() {
-  // --- BULLETS ---
   bullets.forEach((b, i) => {
     b.x += b.vx;
     b.y += b.vy;
@@ -385,7 +544,6 @@ function updateEntities() {
     if (b.y < 0 || b.y > canvas.height) bullets.splice(i, 1);
   });
 
-  // --- ENEMIES ---
   if (game.frames % (75 - game.level * 5) === 0 && !boss) {
     enemies.push({
       x: Math.random() * (canvas.width - 40) + 20,
@@ -406,7 +564,7 @@ function updateEntities() {
       if (player.shield) {
           player.shield = false;
           spawnExplosion(player.x, player.y, "#0ff", 15);
-          enemies.splice(i, 1); // Shield kills enemy on impact
+          enemies.splice(i, 1); 
       } else {
           game.shake = 20;
           game.lives--;
@@ -425,14 +583,13 @@ function updateEntities() {
         
         if (Math.random() < 0.1) powerups.push({ x: e.x, y: e.y, vy: 2, type: 'weapon' });
         if (Math.random() < 0.1) powerups.push({ x: e.x, y: e.y, vy: 2, type: 'life' });
-        if (Math.random() < 0.12) powerups.push({ x: e.x, y: e.y, vy: 2, type: 'shield' }); // 12% Shield
+        if (Math.random() < 0.12) powerups.push({ x: e.x, y: e.y, vy: 2, type: 'shield' }); 
       }
     });
     
     if (e.y > canvas.height) enemies.splice(i, 1);
   });
 
-  // --- POWERUPS ---
   powerups.forEach((p, i) => {
     p.y += p.vy; 
     
@@ -448,7 +605,6 @@ function updateEntities() {
         ctx.fillRect(p.x - 10, p.y - 4, 20, 8);
         resetGlow();
     } else if (p.type === 'shield') {
-        // Shield Powerup Visual
         drawGlow("#0ff", 20);
         ctx.strokeStyle = "#0ff";
         ctx.lineWidth = 2;
@@ -476,7 +632,6 @@ function updateEntities() {
     }
   });
 
-  // --- PARTICLES ---
   particles.forEach((p, i) => {
     p.x += p.vx;
     p.y += p.vy;
@@ -498,11 +653,18 @@ function updateBoss() {
 
     if (game.score >= threshold) {
       // HP 120 * LEVEL
-      boss = { x: canvas.width/2, y: -100, hp: 120 * game.level, w: 100, dir: 1 };
+      const maxHp = 120 * game.level;
+      let name = "";
+      if (game.level === 1) name = "THE HELL-GRINDER";
+      else if (game.level === 2) name = "THE SERAPH VIRUS";
+      else name = "THE VOID SINGULARITY";
+
+      boss = { x: canvas.width/2, y: -100, hp: maxHp, maxHp: maxHp, w: 100, dir: 1, name: name };
       
       if (game.level === 1) { playBgm("boss1"); game.theme = "boss1"; }
       else if (game.level === 2) { playBgm("boss2"); game.theme = "boss2"; }
       else { playBgm("final"); game.theme = "boss3"; }
+      updateUITheme();
     }
   }
 
@@ -545,7 +707,7 @@ function updateBoss() {
            boss = null;
            
            game.theme = "normal";
-           
+           updateUITheme();
            game.level++;
            game.score = 0; 
            playBgm("normal");
@@ -597,18 +759,93 @@ function loop() {
     updatePlayer();
     updateEntities();
     updateBoss();
+    drawBossHealthBar();
     
-    ctx.fillStyle = "white";
-    ctx.font = "20px Orbitron";
+    // === HORROR UI RENDERING ===
     ctx.textAlign = "left";
-    ctx.fillText(`SCORE: ${game.score}`, 20, 40);
-    ctx.fillText(`LEVEL: ${game.level}`, 20, 70);
+    ctx.font = "20px Orbitron";
+
+    if (game.theme === "normal") {
+        ctx.fillStyle = "white";
+        ctx.fillText(`SCORE: ${game.score}`, 20, 40);
+        ctx.fillText(`LEVEL: ${game.level}`, 20, 70);
+    } 
+    else if (game.theme === "boss1") {
+        // Butcher: Shaking Red Text
+        const shakeX = (Math.random() - 0.5) * 4;
+        const shakeY = (Math.random() - 0.5) * 4;
+        ctx.fillStyle = "#f00";
+        ctx.shadowColor = "#500";
+        ctx.shadowBlur = 10;
+        ctx.fillText(`SCORE: ${game.score}`, 20 + shakeX, 40 + shakeY);
+        ctx.fillText(`LEVEL: ${game.level}`, 20 + shakeX, 70 + shakeY);
+        resetGlow();
+    } 
+    else if (game.theme === "boss2") {
+        // Virus: Glitch Text (RGB Split)
+        const jitterY = (Math.random() - 0.5) * 5;
+        let scoreTxt = `SCORE: ${game.score}`;
+        let lvlTxt = `LEVEL: ${game.level}`;
+        
+        if (Math.random() < 0.1) scoreTxt = scoreTxt.replace('O', '0').replace('E', '#');
+        
+        ctx.fillStyle = "rgba(0, 255, 0, 0.8)";
+        ctx.fillText(scoreTxt, 20, 40 + jitterY);
+        ctx.fillStyle = "rgba(255, 0, 255, 0.5)";
+        ctx.fillText(scoreTxt, 22, 40 + jitterY);
+        
+        ctx.fillStyle = "#0f0";
+        ctx.fillText(lvlTxt, 20, 70 + jitterY);
+    } 
+    else if (game.theme === "boss3") {
+        // Void: Ghostly Fade
+        const blurAmount = Math.abs(Math.sin(game.frames * 0.05)) * 4;
+        ctx.filter = `blur(${blurAmount}px)`;
+        
+        const drift = Math.sin(game.frames * 0.02) * 10;
+        
+        ctx.fillStyle = "#d0f";
+        ctx.shadowColor = "#fff";
+        ctx.shadowBlur = 20;
+        ctx.fillText(`SCORE: ${game.score}`, 20 + drift, 40);
+        ctx.fillText(`LEVEL: ${game.level}`, 20 - drift, 70);
+        
+        ctx.filter = "none"; 
+        resetGlow();
+    }
     
+    // Draw Lives
     for(let i=0; i<game.lives; i++) {
       drawPoly(canvas.width - 40 - (i*30), 40, 10, 3, COLORS.player, -Math.PI/2);
     }
     
     ctx.restore();
+
+    // === POST-PROCESSING: BOSS 2 GLITCH ===
+    if (game.theme === "boss2") {
+        // Intense Screen Tearing
+        const intensity = 0.3; // Probability per frame
+        if (Math.random() < intensity) {
+            const w = canvas.width;
+            const h = canvas.height;
+            
+            // Number of slices
+            const slices = Math.floor(Math.random() * 3) + 1;
+            
+            for(let i=0; i<slices; i++) {
+                const y = Math.random() * h;
+                const chunkH = Math.random() * 50 + 10;
+                const offsetX = (Math.random() - 0.5) * 30; // Shift amount
+                
+                // Draw slice of canvas onto itself
+                ctx.drawImage(canvas, 0, y, w, chunkH, offsetX, y, w, chunkH);
+                
+                // Optional: Add colored overlay to the slice
+                ctx.fillStyle = "rgba(0, 255, 0, 0.2)";
+                ctx.fillRect(offsetX, y, w, chunkH);
+            }
+        }
+    }
   }
 }
 
