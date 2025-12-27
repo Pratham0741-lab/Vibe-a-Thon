@@ -850,4 +850,8 @@ function loop() {
 }
 
 createStars();
+<<<<<<< HEAD
 loop();
+=======
+loop();
+>>>>>>> ad1a73d (done)
