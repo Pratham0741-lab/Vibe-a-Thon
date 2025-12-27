@@ -36,7 +36,7 @@ const sfx = {
     osc.frequency.setValueAtTime(800, audioCtx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.15);
 
-    // Lowered Volume
+    // Lowered Volume (5%)
     gain.gain.setValueAtTime(0.05, audioCtx.currentTime); 
     gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
 
@@ -130,6 +130,7 @@ let particles = [];
 let powerups = [];
 let boss = null;
 let stars = [];
+let planets = [];
 
 /* ================= INPUT ================= */
 const keys = {};
@@ -149,14 +150,18 @@ function updateUITheme() {
         canvas.style.boxShadow = "0 0 50px rgba(0, 255, 255, 0.2)";
         canvas.style.borderColor = "#333";
     } else if (game.theme === "boss1") {
+        // Butcher: Pulsing Blood Border
         canvas.style.boxShadow = "0 0 100px rgba(255, 0, 0, 0.8)";
         canvas.style.borderColor = "#800";
     } else if (game.theme === "boss2") {
+        // Virus: Erratic Strobe
         canvas.style.boxShadow = "0 0 80px rgba(0, 255, 0, 0.8)";
         canvas.style.borderColor = "#0f0";
     } else if (game.theme === "boss3") {
-        canvas.style.boxShadow = "inset 0 0 150px rgba(100, 0, 200, 0.9)";
-        canvas.style.borderColor = "#202";
+        // Void: Claustrophobic Tunnel (Darkness Closing In)
+        const breath = 150 + Math.sin(game.frames * 0.05) * 50; 
+        canvas.style.boxShadow = `inset 0 0 ${breath}px rgba(0, 0, 0, 1)`; 
+        canvas.style.borderColor = "#000"; 
     }
 }
 
@@ -182,6 +187,7 @@ function drawBossHealthBar() {
     ctx.shadowBlur = 10;
     ctx.shadowColor = color;
 
+    // Name Animations
     if (game.level === 1) {
         const sx = (Math.random() - 0.5) * 2;
         ctx.fillText(name, canvas.width / 2 + sx, y - 15);
@@ -366,7 +372,7 @@ function drawBossModel(b) {
   }
 }
 
-/* ================= PARTICLES & STARS ================= */
+/* ================= PARTICLES & BACKGROUND ================= */
 function createStars() {
   stars = Array.from({ length: 120 }, () => ({
     x: Math.random() * canvas.width,
@@ -376,11 +382,28 @@ function createStars() {
   }));
 }
 
+function createPlanets() {
+    planets = [];
+    const numPlanets = 3;
+    for(let i=0; i<numPlanets; i++) {
+        planets.push({
+            x: Math.random() * canvas.width,
+            y: Math.random() * canvas.height,
+            r: 40 + Math.random() * 60, 
+            speed: 0.2 + Math.random() * 0.5,
+            color1: `hsl(${Math.random() * 360}, 70%, 50%)`,
+            color2: `hsl(${Math.random() * 360}, 60%, 10%)`,
+            hasRings: Math.random() > 0.6,
+            angle: Math.random() * Math.PI
+        });
+    }
+}
+
 function drawBackground() {
   const w = canvas.width;
   const h = canvas.height;
 
-  // --- DYNAMIC THEMES ---
+  // 1. BASE BACKGROUND FILL
   if (game.theme === "normal") {
     ctx.fillStyle = COLORS.bg_normal;
     ctx.fillRect(0, 0, w, h);
@@ -389,16 +412,57 @@ function drawBackground() {
     const pulse = Math.sin(game.frames * 0.2) * 30; 
     ctx.fillStyle = `rgb(${40 + pulse}, 0, 0)`; 
     ctx.fillRect(0, 0, w, h);
-    const grad = ctx.createRadialGradient(w/2, h/2, h/3, w/2, h/2, h);
-    grad.addColorStop(0, "transparent");
-    grad.addColorStop(1, "rgba(0,0,0,0.9)");
-    ctx.fillStyle = grad;
-    ctx.fillRect(0,0,w,h);
   }
   else if (game.theme === "boss2") {
     ctx.fillStyle = "#000800"; 
     ctx.fillRect(0, 0, w, h);
-    // Digital Glitch Blocks
+  }
+  else if (game.theme === "boss3") {
+    ctx.fillStyle = "#000"; 
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  // 2. DRAW PLANETS (PARALLAX LAYER)
+  planets.forEach(p => {
+      p.y += p.speed;
+      if (p.y - p.r * 2 > h) {
+          p.y = -p.r * 2;
+          p.x = Math.random() * w;
+      }
+
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      
+      const grad = ctx.createRadialGradient(-p.r/3, -p.r/3, p.r/10, 0, 0, p.r);
+      grad.addColorStop(0, p.color1);
+      grad.addColorStop(1, p.color2);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(0, 0, p.r, 0, Math.PI*2);
+      ctx.fill();
+
+      if(p.hasRings) {
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.rotate(p.angle);
+          ctx.ellipse(0, 0, p.r * 1.8, p.r * 0.4, 0, 0, Math.PI*2);
+          ctx.stroke();
+      }
+      ctx.restore();
+  });
+
+  // 3. THEME OVERLAYS
+  if (game.theme === "boss1") {
+    const grad = ctx.createRadialGradient(w/2, h/2, h/3, w/2, h/2, h);
+    grad.addColorStop(0, "transparent");
+    grad.addColorStop(1, "rgba(50,0,0,0.8)"); 
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,w,h);
+  }
+  else if (game.theme === "boss2") {
+    ctx.fillStyle = "rgba(0, 255, 0, 0.05)"; 
+    ctx.fillRect(0,0,w,h);
     ctx.fillStyle = "rgba(0, 255, 0, 0.1)";
     for(let i=0; i<20; i++) {
         const nx = Math.random() * w;
@@ -406,12 +470,8 @@ function drawBackground() {
         ctx.fillRect(nx, ny, Math.random() * 50, 2);
     }
   }
-  else if (game.theme === "boss3") {
-    ctx.fillStyle = "#000"; 
-    ctx.fillRect(0, 0, w, h);
-  }
 
-  // Draw Stars
+  // 4. DRAW STARS
   ctx.fillStyle = "white";
   if (game.theme === "boss1") ctx.fillStyle = "#ff4444"; 
   if (game.theme === "boss2") ctx.fillStyle = "#00ff00"; 
@@ -423,13 +483,8 @@ function drawBackground() {
     let xOffset = 0;
     let yOffset = 0;
 
-    if (game.theme === "boss2" && Math.random() < 0.2) {
-        xOffset = (Math.random() - 0.5) * 50;
-    }
-    if (game.theme === "boss3") {
-        xOffset = (Math.random() - 0.5) * 2;
-        yOffset = (Math.random() - 0.5) * 2;
-    }
+    if (game.theme === "boss2" && Math.random() < 0.2) xOffset = (Math.random() - 0.5) * 50;
+    if (game.theme === "boss3") { xOffset = (Math.random() - 0.5) * 2; yOffset = (Math.random() - 0.5) * 2; }
 
     if (s.y > canvas.height) { s.y = 0; s.x = Math.random() * canvas.width; }
     
@@ -475,6 +530,7 @@ function initGame() {
   menu.style.display = "none";
   updateUITheme();
   createStars();
+  createPlanets();
   playBgm("normal");
 }
 
@@ -706,6 +762,11 @@ function updateBoss() {
            spawnExplosion(boss.x, boss.y, COLORS.boss, 100);
            boss = null;
            
+           if (game.level === 3) {
+               victory();
+               return; 
+           }
+
            game.theme = "normal";
            updateUITheme();
            game.level++;
@@ -734,8 +795,30 @@ function endGame() {
   game.running = false;
   stopAllBgm();
   menu.style.display = "flex";
-  document.querySelector("#menu h1").innerText = "GAME OVER";
-  document.querySelector("#menu p").innerHTML = `Score: ${game.score}<br>Press Enter to Restart`;
+  const h1 = document.querySelector("#menu h1");
+  const p = document.querySelector("#menu p");
+  
+  h1.innerText = "GAME OVER";
+  h1.style.background = "linear-gradient(to bottom, #0ff, #00f)";
+  h1.style.webkitBackgroundClip = "text";
+  h1.style.webkitTextFillColor = "transparent";
+  
+  p.innerHTML = `Score: ${game.score}<br>Press Enter to Restart`;
+}
+
+function victory() {
+  game.running = false;
+  stopAllBgm();
+  menu.style.display = "flex";
+  const h1 = document.querySelector("#menu h1");
+  const p = document.querySelector("#menu p");
+  
+  h1.innerText = "MISSION COMPLETE";
+  h1.style.background = "linear-gradient(to bottom, #ffd700, #00ff00)"; 
+  h1.style.webkitBackgroundClip = "text";
+  h1.style.webkitTextFillColor = "transparent";
+  
+  p.innerHTML = `THE VOID IS SILENCED.<br>Final Score: ${game.score}<br>Press Enter to Play Again`;
 }
 
 function loop() {
@@ -782,7 +865,7 @@ function loop() {
         resetGlow();
     } 
     else if (game.theme === "boss2") {
-        // Virus: Glitch Text (RGB Split)
+        // Virus: Glitch Text
         const jitterY = (Math.random() - 0.5) * 5;
         let scoreTxt = `SCORE: ${game.score}`;
         let lvlTxt = `LEVEL: ${game.level}`;
@@ -804,11 +887,16 @@ function loop() {
         
         const drift = Math.sin(game.frames * 0.02) * 10;
         
-        ctx.fillStyle = "#d0f";
-        ctx.shadowColor = "#fff";
-        ctx.shadowBlur = 20;
+        ctx.fillStyle = "rgba(100, 0, 255, 0.5)";
         ctx.fillText(`SCORE: ${game.score}`, 20 + drift, 40);
         ctx.fillText(`LEVEL: ${game.level}`, 20 - drift, 70);
+
+        const alpha = 0.5 + Math.abs(Math.sin(game.frames * 0.1)) * 0.5;
+        ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+        ctx.shadowColor = "#f0f";
+        ctx.shadowBlur = 30;
+        ctx.fillText(`SCORE: ${game.score}`, 20, 40);
+        ctx.fillText(`LEVEL: ${game.level}`, 20, 70);
         
         ctx.filter = "none"; 
         resetGlow();
@@ -821,29 +909,31 @@ function loop() {
     
     ctx.restore();
 
-    // === POST-PROCESSING: BOSS 2 GLITCH ===
-    if (game.theme === "boss2") {
-        // Intense Screen Tearing
-        const intensity = 0.3; // Probability per frame
-        if (Math.random() < intensity) {
-            const w = canvas.width;
-            const h = canvas.height;
-            
-            // Number of slices
-            const slices = Math.floor(Math.random() * 3) + 1;
-            
-            for(let i=0; i<slices; i++) {
-                const y = Math.random() * h;
-                const chunkH = Math.random() * 50 + 10;
-                const offsetX = (Math.random() - 0.5) * 30; // Shift amount
-                
-                // Draw slice of canvas onto itself
-                ctx.drawImage(canvas, 0, y, w, chunkH, offsetX, y, w, chunkH);
-                
-                // Optional: Add colored overlay to the slice
-                ctx.fillStyle = "rgba(0, 255, 0, 0.2)";
-                ctx.fillRect(offsetX, y, w, chunkH);
-            }
+    // === POST-PROCESSING: SCREEN EFFECTS ===
+    if (game.theme === "boss2" && Math.random() < 0.3) {
+        const w = canvas.width;
+        const h = canvas.height;
+        const slices = Math.floor(Math.random() * 3) + 1;
+        for(let i=0; i<slices; i++) {
+            const y = Math.random() * h;
+            const chunkH = Math.random() * 50 + 10;
+            const offsetX = (Math.random() - 0.5) * 30;
+            ctx.drawImage(canvas, 0, y, w, chunkH, offsetX, y, w, chunkH);
+            ctx.fillStyle = "rgba(0, 255, 0, 0.2)";
+            ctx.fillRect(offsetX, y, w, chunkH);
+        }
+    }
+
+    if (game.theme === "boss3") {
+        if (Math.random() < 0.05) {
+             ctx.globalCompositeOperation = "difference";
+             ctx.fillStyle = "white";
+             ctx.fillRect(0, 0, canvas.width, canvas.height);
+             ctx.globalCompositeOperation = "source-over";
+        }
+        if (Math.random() < 0.2) {
+             ctx.fillStyle = "rgba(0,0,0,0.3)";
+             ctx.fillRect(Math.random() * canvas.width, 0, Math.random() * 100, canvas.height);
         }
     }
   }
