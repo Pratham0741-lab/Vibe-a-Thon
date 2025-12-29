@@ -84,10 +84,10 @@ const sfx = {
 };
 
 const bgm = {
-  normal: new Audio("sounds/bgm.mp3"),
-  boss1: new Audio("sounds/boss_bgm.mp3"),
-  boss2: new Audio("sounds/boss_bgm2.mp3"),
-  final: new Audio("sounds/final_boss_bgm.mp3")
+  normal: new Audio("sound/bgm.mp3"),
+  boss1: new Audio("sound/boss_bgm.mp3"),
+  boss2: new Audio("sound/boss_bgm2.mp3"),
+  final: new Audio("sound/final_boss_bgm.mp3")
 };
 
 Object.values(bgm).forEach(b => {
